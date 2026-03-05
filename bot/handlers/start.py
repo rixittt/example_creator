@@ -71,7 +71,7 @@ async def cmd_start(message: Message, state: FSMContext, db: Database) -> None:
     if student:
         await state.clear()
         await message.answer(
-            f"Здравствуйте, {student.name}! Вы вошли как студент.",
+            f"{_format_student_display_name(student)}.",
             reply_markup=student_menu_keyboard(),
         )
         return
@@ -499,10 +499,14 @@ async def student_select_topic(callback: CallbackQuery, state: FSMContext, db: D
         await callback.answer()
         return
 
-    solved_count = await db.count_student_answers_by_mode(student.id, "testing")
+    solved_count = await db.count_student_answers_by_mode_and_topic(student.id, "testing", topic_id)
     if solved_count >= 10:
+        await _remove_inline_keyboard(callback.message)
         await state.clear()
-        await callback.message.answer("Вы уже завершили тестирование (10 из 10).", reply_markup=student_menu_keyboard())
+        await callback.message.answer(
+            f"Вы уже завершили тестирование по теме «{topic.title}» (10 из 10).",
+            reply_markup=student_menu_keyboard(),
+        )
         await callback.answer()
         return
 
@@ -578,12 +582,6 @@ async def student_testing_mode(message: Message, state: FSMContext, db: Database
     if not student:
         return
 
-    solved_count = await db.count_student_answers_by_mode(student.id, "testing")
-    if solved_count >= 10:
-        await state.clear()
-        await message.answer("Вы уже завершили тестирование (10 из 10).", reply_markup=student_menu_keyboard())
-        return
-
     topics = await db.list_topics()
     if not topics:
         await message.answer("В базе нет тем.")
@@ -655,7 +653,8 @@ async def testing_answer_photo(message: Message, state: FSMContext, db: Database
 
     await db.save_answer(student.id, task_id, "testing", answer_image_file_id=file_id, is_correct=(check.verdict == "correct"))
 
-    solved_count = await db.count_student_answers_by_mode(student.id, "testing")
+    selected_topic_id = int(state_data.get("selected_topic_id", 0))
+    solved_count = await db.count_student_answers_by_mode_and_topic(student.id, "testing", selected_topic_id)
     if solved_count >= 10:
         await state.clear()
         await message.answer("Тестирование завершено: 10 из 10 задач отправлены.", reply_markup=student_menu_keyboard())
@@ -686,7 +685,9 @@ async def skip_task(message: Message, state: FSMContext, db: Database) -> None:
         await message.answer("Задание пропущено.", reply_markup=learning_after_answer_keyboard())
         return
 
-    solved_count = await db.count_student_answers_by_mode(student.id, "testing")
+    state_data = await state.get_data()
+    selected_topic_id = int(state_data.get("selected_topic_id", 0))
+    solved_count = await db.count_student_answers_by_mode_and_topic(student.id, "testing", selected_topic_id)
     if solved_count >= 10:
         await state.clear()
         await message.answer("Тестирование завершено: 10 из 10 задач обработаны.", reply_markup=student_menu_keyboard())
@@ -899,6 +900,7 @@ async def _send_testing_task(message: Message, state: FSMContext, db: Database, 
 
     task = await db.get_next_task(student.id, student.teacher_id, "testing", topic_id=topic_id)
     if not task:
+        await _remove_inline_keyboard(message)
         await state.clear()
         await message.answer(
             "Задания для тестирования закончились раньше лимита. Тестирование завершено.",
@@ -921,6 +923,20 @@ async def _send_theory_page(message: Message, pages: list[TheoryPage], index: in
         return
 
     await message.answer(text, reply_markup=theory_keyboard(has_next))
+
+
+async def _remove_inline_keyboard(message: Message) -> None:
+    if not message.reply_markup:
+        return
+
+    try:
+        await message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+
+
+def _format_student_display_name(student: Student) -> str:
+    return f"Здравствуйте, {student.name}_{student.group_number}_{student.student_number}"
 
 
 async def _send_task_with_prompt(message: Message, task: Task) -> None:

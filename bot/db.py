@@ -18,6 +18,9 @@ class Student:
     name: str
     telegram_user_id: int
     group_id: int
+    student_number: int
+    group_name: str
+    group_number: int
     teacher_id: int
 
 
@@ -84,9 +87,21 @@ class Database:
     async def get_student_by_telegram_id(self, user_id: int) -> Student | None:
         row = await self.pool.fetchrow(
             """
-            SELECT s.id, s.name, s.telegram_user_id, s.group_id, g.teacher_id
+            SELECT
+                s.id,
+                s.name,
+                s.telegram_user_id,
+                s.group_id,
+                ranked.student_number,
+                g.name AS group_name,
+                s.group_id AS group_number,
+                g.teacher_id
             FROM students s
             JOIN groups g ON g.id = s.group_id
+            JOIN (
+                SELECT id, ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY id) AS student_number
+                FROM students
+            ) ranked ON ranked.id = s.id
             WHERE s.telegram_user_id = $1
             """,
             user_id,
@@ -128,28 +143,63 @@ class Database:
         if rows:
             return [TheoryPage(**dict(row)) for row in rows]
 
-    async def get_next_task(self, student_id: int, teacher_id: int, mode: str, topic_id: int) -> Task | None:
-        row = await self.pool.fetchrow(
+        fallback_rows = await self.pool.fetch(
             """
-            SELECT t.id, tp.title AS topic_title, t.mode, t.task_text, t.task_hint_text, t.task_answer_text, t.task_image_file_id
-            FROM tasks t
-            JOIN topics tp ON tp.id = t.topic_id
-            WHERE t.teacher_id = $1
-              AND t.mode = $2
-              AND t.topic_id = $4
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM answers a
-                  WHERE a.task_id = t.id AND a.student_id = $3
-              )
-            ORDER BY t.id
-            LIMIT 1
-            """,
-            teacher_id,
-            mode,
-            student_id,
-            topic_id,
+            SELECT id, page_order, title, text_content, image_file_id
+            FROM theory_pages
+            WHERE topic_id IS NULL
+            ORDER BY page_order, id
+            """
         )
+        return [TheoryPage(**dict(row)) for row in fallback_rows]
+    
+
+    async def get_next_task(self, student_id: int, teacher_id: int, mode: str, topic_id: int) -> Task | None:
+        if mode == "testing":
+            row = await self.pool.fetchrow(
+                """
+                SELECT t.id, tp.title AS topic_title, t.mode, t.task_text, t.task_hint_text, t.task_answer_text, t.task_image_file_id
+                FROM tasks t
+                JOIN topics tp ON tp.id = t.topic_id
+                WHERE t.teacher_id = $1
+                  AND t.mode = $2
+                  AND t.topic_id = $4
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM answers a
+                      WHERE a.task_id = t.id AND a.student_id = $3
+                  )
+                ORDER BY RANDOM()
+                LIMIT 1
+                """,
+                teacher_id,
+                mode,
+                student_id,
+                topic_id,
+            )
+        else:
+            row = await self.pool.fetchrow(
+                """
+                SELECT t.id, tp.title AS topic_title, t.mode, t.task_text, t.task_hint_text, t.task_answer_text, t.task_image_file_id
+                FROM tasks t
+                JOIN topics tp ON tp.id = t.topic_id
+                WHERE t.teacher_id = $1
+                  AND t.mode = $2
+                  AND t.topic_id = $4
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM answers a
+                      WHERE a.task_id = t.id AND a.student_id = $3
+                  )
+                ORDER BY t.id
+                LIMIT 1
+                """,
+                teacher_id,
+                mode,
+                student_id,
+                topic_id,
+            )
+
         if not row:
             return None
         return Task(**dict(row))
@@ -253,6 +303,24 @@ class Database:
                 """,
                 student_id,
                 mode,
+            )
+            or 0
+        )
+    
+    async def count_student_answers_by_mode_and_topic(self, student_id: int, mode: str, topic_id: int) -> int:
+        return int(
+            await self.pool.fetchval(
+                """
+                SELECT COUNT(*)
+                FROM answers a
+                JOIN tasks t ON t.id = a.task_id
+                WHERE a.student_id = $1
+                  AND a.mode = $2
+                  AND t.topic_id = $3
+                """,
+                student_id,
+                mode,
+                topic_id,
             )
             or 0
         )

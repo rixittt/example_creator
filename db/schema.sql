@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS topics (
 
 CREATE TABLE IF NOT EXISTS theory_pages (
     id SERIAL PRIMARY KEY,
+    topic_id INTEGER REFERENCES topics(id),
     page_order INTEGER NOT NULL,
     title TEXT NOT NULL,
     text_content TEXT NOT NULL,
@@ -31,18 +32,6 @@ CREATE TABLE IF NOT EXISTS students (
     group_id INTEGER NOT NULL REFERENCES groups(id)
 );
 
-CREATE TABLE IF NOT EXISTS answers (
-    id SERIAL PRIMARY KEY,
-    task_id INTEGER NOT NULL REFERENCES tasks(id),
-    student_id INTEGER NOT NULL REFERENCES students(id),
-    mode TEXT NOT NULL CHECK (mode IN ('learning', 'testing')),
-    answer_image_file_id TEXT,
-    is_correct BOOLEAN NOT NULL,
-    is_skipped BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (student_id, task_id)
-);
-
 CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
     topic_id INTEGER NOT NULL REFERENCES topics(id),
@@ -54,4 +43,16 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_image_file_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (topic_id, teacher_id, mode, task_text)
+);
+
+CREATE TABLE IF NOT EXISTS answers (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    student_id INTEGER NOT NULL REFERENCES students(id),
+    mode TEXT NOT NULL CHECK (mode IN ('learning', 'testing')),
+    answer_image_file_id TEXT,
+    is_correct BOOLEAN NOT NULL,
+    is_skipped BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (student_id, task_id)
 );

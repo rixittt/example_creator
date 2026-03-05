@@ -1,22 +1,22 @@
 INSERT INTO teachers (name, telegram_user_id)
 VALUES
-    ('Преподаватель1', 5397130405),
-    ('Преподаватель2', 5248186952),
-    ('Преподаватель3', 333333333)
+    ('Преподаватель1', 458945690),
+    ('Преподаватель2', 685414031),
+    ('Преподаватель3', 5397130405)
 ON CONFLICT (name) DO UPDATE
 SET telegram_user_id = EXCLUDED.telegram_user_id;
 
 INSERT INTO groups (name, teacher_id)
 SELECT 'Группа1', t.id FROM teachers t WHERE t.name = 'Преподаватель1'
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET teacher_id = EXCLUDED.teacher_id;
 
 INSERT INTO groups (name, teacher_id)
 SELECT 'Группа2', t.id FROM teachers t WHERE t.name = 'Преподаватель2'
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET teacher_id = EXCLUDED.teacher_id;
 
 INSERT INTO groups (name, teacher_id)
 SELECT 'Группа3', t.id FROM teachers t WHERE t.name = 'Преподаватель3'
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET teacher_id = EXCLUDED.teacher_id;
 
 INSERT INTO topics (title, llm_prompt)
 VALUES
@@ -35,23 +35,25 @@ VALUES
 ON CONFLICT (title) DO UPDATE
 SET llm_prompt = EXCLUDED.llm_prompt;
 
-INSERT INTO theory_pages (page_order, title, text_content, image_file_id)
+INSERT INTO theory_pages (topic_id, page_order, title, text_content, image_file_id)
 VALUES
-    (1, 'Теория: метод замены переменной', 'Если интеграл содержит сложную функцию и её производную, делаем замену u = g(x).', 'AgACAgIAAxkBAAIG6WmhM2003FM7TAQWuTef8e4JywKsAAJ0FmsbxDQJSb8I9lm_Y8YmAQADAgADeAADOgQ'),
-    (2, 'Теория: метод по частям', 'Используем формулу ∫u dv = uv - ∫v du. Выбираем u так, чтобы du упрощался.', 'AgACAgIAAxkBAAIGYmmgm3uN_FKYSAABoH9C4KiRblx3_QACoBVrGyNj-Uh23NLY0op7SQEAAwIAA3kAAzoE')
+    (1, 1, 'Теория: метод замены переменной', 'Если интеграл содержит сложную функцию и её производную, делаем замену u = g(x).', 'AgACAgIAAxkBAAIMBGmpFf8bo2FWQeJ7eLrXj3ZrZCB4AAI6EmsbV0tISU260M3hoa8qAQADAgADeQADOgQ'),
+    (2, 1, 'Теория: метод подведения под знак дифференциала', 'Представьте подынтегральное выражение как f''(x)/f(x) и используйте замену u = f(x), du = f''(x)dx.', 'AgACAgIAAxkBAAIMBmmpFjZhDhCqkda36I_rGtMqR6HIAAI7EmsbV0tISdWeI9z6IvEHAQADAgADeQADOgQ'),
+    (3, 1, 'Теория: метод по частям', 'Используем формулу ∫u dv = uv - ∫v du. Выбираем u так, чтобы du упрощался.', 'AgACAgIAAxkBAAIMCGmpFmSxFmASM0KvW31WOarWJtLYAAI8EmsbV0tISRcyw7U6BSfXAQADAgADeQADOgQ')
 ON CONFLICT DO NOTHING;
 
 WITH student_seed AS (
-    SELECT 'Группа1'::TEXT AS group_name, 742381892::BIGINT AS telegram_user_id, 1::INT AS student_no
-    UNION ALL SELECT 'Группа1', 100000002, 2
-    UNION ALL SELECT 'Группа2', 200000001, 1
-    UNION ALL SELECT 'Группа3', 300000001, 1
+    SELECT 'Группа1'::TEXT AS group_name, 'Студент'::TEXT AS student_name, 448270826::BIGINT AS telegram_user_id
+    UNION ALL SELECT 'Группа2', 'Студент', 404326001
+    UNION ALL SELECT 'Группа3', 'Студент', 742381892
 )
 INSERT INTO students (name, telegram_user_id, group_id)
 SELECT
-    'Студент' || regexp_replace(g.name, '\D', '', 'g') || '_' || ss.student_no,
+    ss.student_name,
     ss.telegram_user_id,
     g.id
 FROM student_seed ss
 JOIN groups g ON g.name = ss.group_name
-ON CONFLICT (telegram_user_id) DO NOTHING;
+ON CONFLICT (telegram_user_id) DO UPDATE
+SET name = EXCLUDED.name,
+    group_id = EXCLUDED.group_id;
